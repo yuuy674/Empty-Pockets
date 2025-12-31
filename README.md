@@ -1,2 +1,3 @@
 # Empty-Pockets
-A game about the Great Depression
+Is a game about the Great Depression
+To download ust download main.exe
