@@ -17,6 +17,6 @@ class Tile:
     def draw(self, surface):
         # Draw the filled tile rectangle
         pygame.draw.rect(surface, self.color, self.rect)
-
         # Draw a thin border around the tile for visual separation
         pygame.draw.rect(surface, (50, 50, 50), self.rect, 1)
+
