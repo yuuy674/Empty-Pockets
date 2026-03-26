@@ -1,6 +1,6 @@
 # Empty-Pockets
 Is a game about the Great Depression
-To play download and run Empty_Pockets.iss
+To play download and run Empty_Pockets.exe
 
 
 Empty Pockets is built around a tile bases grid where you place:
