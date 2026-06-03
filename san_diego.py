@@ -394,292 +394,303 @@ def draw_recipe_tooltip(btn):
         screen.blit(popup_font.render(line, True, COL["POPUP_TEXT"]), (rect.x + 6, y))
         y += 14
 
-
-#Intro
-intro_font = pygame.font.SysFont(None, 36) 
-intro_text = ( "Good job beating Level 1!" 
-              "\nWelcome to Level 2 in San Diego." 
-              "\nYour goals:" 
-              "\n- Employ at least 15,000 workers" 
-              "\n- Build at least 3 Oil Derricks"
-              ) 
-screen.fill((0, 0, 0)) 
-lines = intro_text.split("\n") 
-y = HEIGHT // 2 - 80 
-for line in lines: 
-    surf = intro_font.render(line, True, (255, 255, 0)) 
-    screen.blit(surf, (WIDTH // 2 - surf.get_width() // 2, y)) 
-    y += 40 
-
-pygame.display.flip()
-pygame.time.wait(5000)
-
 #Main Loop
-running = True
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-
-        # Button clicks
-        for btn in all_buttons:
-            btn.is_clicked(event)
-
-        # Upgrade click (max lvl 10)
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and popup_building and upgrade_btn_rect:
-            if upgrade_btn_rect.collidepoint(event.pos):
-                current_lvl = int(getattr(popup_building, "lvl", 1))
-                if current_lvl >= 10:
-                    show_error("Max level reached (10)")
-                elif money >= UPGRADE_COST:
-                    popup_building.update_lvl(1)
-                    money -= UPGRADE_COST
-                    total_employees += 50
-                    show_popup_for(popup_building)
-                else:
-                    show_error(f"Not enough money to upgrade! Need ${UPGRADE_COST}, have ${money}")
-                continue
-
-        # Grid interactions
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not clicked_on_any_button(event.pos):
-            pos = (event.pos[0] // TILE_SIZE, event.pos[1] // TILE_SIZE)
-            b = get_building_at(pos)
-
-            # Placement
-            if track_click_build_factory:
-                place_building(pos, True); track_click_build_factory = False; clear_popup(); continue
-            if track_click_build_mine:
-                place_building(pos, False); track_click_build_mine = False; clear_popup(); continue
-
-            # Delete mode
-            if delete_mode:
-                if b and not selected_building:
-                    remove_building(b); reset_selection(); clear_popup()
-                elif selected_building and b and selected_building is not b:
-                    if not remove_connection(selected_building, b): show_error("No connection to delete")
-                    reset_selection(); clear_popup()
-                elif selected_building and pos == PORT_TILE:
-                    remove_port_connection(selected_building); reset_selection(); clear_popup()
-                else:
-                    if b and not selected_building: selected_building = b
-                continue
-
-            # Connect mode (building ↔ building)
-            if connect_mode:
-                if not b:
-                    reset_selection()
-                else:
-                    if not selected_building:
-                        selected_building = b
-                    else:
-                        if selected_building is not b:
-                            try:
-                                c = Connection(selected_building, b, 50)
-                                connections.append(c)
-                            except Exception as e:
-                                show_error("Failed to connect")
-                                print(e)
-                        reset_selection()
-                clear_popup(); continue
-
-            # Producer -> port (first click prioritized)
-            if selected_building and pos == PORT_TILE:
-                try:
-                    pc = PortConnection(selected_building, port, capacity=50)
-                    port_connections.append(pc)
-                except Exception:
-                    show_error("Failed to connect to port")
-                reset_selection(); clear_popup(); continue
-
-            # Normal selection / popup
-            if b and not selected_building:
-                selected_building = b
-                show_popup_for(b)
-            elif not b and pos != PORT_TILE:
-                reset_selection(); clear_popup()
-            else:
-                if b: show_popup_for(b)
-
-    # Tick: production, pay, transfers
-    now = pygame.time.get_ticks()
-    if now - last_tick >= TICK_MS:
-        last_tick = now
-
-        for m in mines:
-            try:
-                produced = m.produce()
-                m.last_output = produced if produced else 0
-                m.employ(10)
-                expenses = m.pay(wage)
-                money -= expenses
-                m.last_expenses = int(expenses); m.last_revenue = 0
-            except Exception:
-                print("Mine error")
-
-        for f in factories:
-            try:
-                produced = f.produce()
-                f.last_output = produced if produced else 0
-                f.employ(10)
-                expenses = f.pay(wage)
-                money -= expenses
-                f.last_expenses = int(expenses); f.last_revenue = 0
-            except Exception:
-                print("Factory error")
-
-        for pc in port_connections:
-            try:
-                earned = pc.transfer()
-                if earned and earned > 0:
-                    money += earned
-                    pc.producer.last_revenue = int(earned)
-            except Exception:
-                show_error("Port transfer error")
-
-        for c in connections:
-            try:
-                c.transfer()
-            except Exception:
-                show_error("Transfer error")
-
-    # Auto-clear error after 1 second
-    if error_msg and pygame.time.get_ticks() - error_time > 1000:
-        clear_error()
-
-    # Draw grid
-    for tile in tiles.values():
-        tile.draw(screen)
-
-    # Sea rows
-    for i in range(GRID_COLS):
-        tiles[(i, SEA_ROW)].color = COL["SEA"]
-        tiles[(i, SEA_ROW - 1)].color = COL["SEA"]
-
-    # Visibility logic for build menus
-    if construct_mode:
-        mine_btn.show()
-        factory_btn.show()
-        for b in mine_buttons:
-            b.show() if show_mine_buttons else b.hide()
-        for b in factory_buttons:
-            b.show() if show_factory_buttons else b.hide()
-    else:
-        mine_btn.hide()
-        factory_btn.hide()
-        # Always hide sub-buttons when not in construct mode
-        for b in mine_buttons:
-            b.hide()
-        for b in factory_buttons:
-            b.hide()
-
-
-
-    # Draw buttons
-    for btn in all_buttons:
-        btn.draw(screen)
-
-    # Hover tooltips for build buttons
-    mouse_pos = pygame.mouse.get_pos()
-    if show_mine_buttons:
-        for btn in mine_buttons:
-            if btn.rect.collidepoint(mouse_pos): draw_recipe_tooltip(btn)
-    if show_factory_buttons:
-        for btn in factory_buttons:
-            if btn.rect.collidepoint(mouse_pos): draw_recipe_tooltip(btn)
-
-    # Draw factories, mines, connections, port
-    for f in factories: f.draw(screen)
-    for m in mines: m.draw(screen)
-    for c in connections:
-        try: c.draw(screen)
-        except TypeError: c.draw(screen, TILE_SIZE)
-    for pc in port_connections:
-        try: pc.draw(screen)
-        except TypeError: pc.draw(screen, TILE_SIZE)
-    port.draw(screen)
-
-    # Popup draw (4x4, includes recipe lines)
-    if popup_building and popup_rect:
-        pygame.draw.rect(screen, COL["POPUP_BG"], popup_rect)
-        revenue = int(getattr(popup_building, "last_revenue", 0))
-        expenses = int(getattr(popup_building, "last_expenses", 0))
-        profit = revenue - expenses
-        output = int(getattr(popup_building, "last_output", 0))
-        lines = [
-            f"Type: {getattr(popup_building,'type','')}",
-            f"Lvl: {int(getattr(popup_building,'lvl',1))}",
-            f"Employment: {int(getattr(popup_building,'employees',0))}",
-            f"Productivity: {getattr(popup_building,'productivity',0)}",
-            f"Output: {output} units/sec",
-            f"Revenue: ${revenue}",
-            f"Expenses: ${expenses}",
-            f"Profit: ${profit}"
-        ]
-        # Add recipe info
-        # Add recipe info directly from the building
-        # Show input resources required
-        for r in getattr(popup_building, "req_resources", []):
-            res, amt = r
-            lines.append(f"Needs {amt} {res} per cycle")
-
-
-
-        x = popup_rect.x + 6; y = popup_rect.y + 6
-        for line in lines:
-            screen.blit(popup_font.render(line, True, COL["POPUP_TEXT"]), (x, y))
-            y += 13
-
-        if upgrade_btn_rect:
-            pygame.draw.rect(screen, COL["UPGRADE_BTN"], upgrade_btn_rect)
-            screen.blit(popup_font.render("UP", True, (0, 0, 0)), (upgrade_btn_rect.x + 6, upgrade_btn_rect.y + 6))
-
-    # HUD
-    screen.blit(pygame.font.SysFont(None, 36).render(f"Money: ${int(money)}", True, (255,255,255)), (10, 10))
-    screen.blit(pygame.font.SysFont(None, 24).render(f"Total Employees: {total_employees}", True, (255,255,255)), (10, 50))
-    
-    # Error display
-    if error_msg:
-        screen.blit(error_font.render(error_msg, True, (255, 0, 0)), (WIDTH//2 - 150, 400))
-
-    # Current mode display
-    # Show current mode at top center
-    mode_text = get_current_mode()
-    mode_surface = pygame.font.SysFont(None, 36).render(mode_text, True, (255,255,255))
-    screen.blit(mode_surface, (WIDTH//2 - mode_surface.get_width()//2, 10))
-
-
-    # Lose logic
-    if money < -10000:
-        show_error("You lost! You ran out of money.")
-
-        #force screen update so player sees the message
-        screen.fill((0, 0, 0))
-        screen.blit(error_font.render(error_msg, True, (255,0,0)), (WIDTH//2 - 150, 400))
-        pygame.display.flip()
-
-        pygame.time.delay(2000)
-
-        with open("savegame.json", "w") as f:
-            json.dump({}, f)
-        pygame.time.delay(2000)
-        running = False
-
-    # Win logic
-    if total_employees >= 15000 and len([f for f in factories if f.type == "oil"]) >= 3:
-        show_error("Congrats! You won the game!")
-
-        #force screen update so player sees the message
-        screen.fill((0, 0, 0))
-        screen.blit(error_font.render(error_msg, True, (255,0,0)), (WIDTH//2 - 150, 400))
-        pygame.display.flip()
-
-        pygame.time.delay(2000)
-        with open("savegame.json", "w") as f:
-            json.dump({}, f)
-        pygame.time.delay(2000)
-        running = False
+def run_game():
+    #Intro
+    intro_font = pygame.font.SysFont(None, 36) 
+    intro_text = ( "Good job beating Level 1!" 
+                "\nWelcome to Level 2 in San Diego." 
+                "\nYour goals:" 
+                "\n- Employ at least 15,000 workers" 
+                "\n- Build at least 3 Oil Derricks"
+                ) 
+    screen.fill((0, 0, 0)) 
+    lines = intro_text.split("\n") 
+    y = HEIGHT // 2 - 80 
+    for line in lines: 
+        surf = intro_font.render(line, True, (255, 255, 0)) 
+        screen.blit(surf, (WIDTH // 2 - surf.get_width() // 2, y)) 
+        y += 40 
 
     pygame.display.flip()
+    pygame.time.wait(5000)
 
-pygame.quit()
-sys.exit()
+
+    # Use global variables
+    global last_tick, money, total_employees
+    global construct_mode, connect_mode, delete_mode
+    global show_mine_buttons, show_factory_buttons
+    global track_click_build_factory, track_click_build_mine
+    global selected_building, popup_building, popup_rect, upgrade_btn_rect
+
+    running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+            # Button clicks
+            for btn in all_buttons:
+                btn.is_clicked(event)
+
+            # Upgrade click (max lvl 10)
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and popup_building and upgrade_btn_rect:
+                if upgrade_btn_rect.collidepoint(event.pos):
+                    current_lvl = int(getattr(popup_building, "lvl", 1))
+                    if current_lvl >= 10:
+                        show_error("Max level reached (10)")
+                    elif money >= UPGRADE_COST:
+                        popup_building.update_lvl(1)
+                        money -= UPGRADE_COST
+                        total_employees += 50
+                        show_popup_for(popup_building)
+                    else:
+                        show_error(f"Not enough money to upgrade! Need ${UPGRADE_COST}, have ${money}")
+                    continue
+
+            # Grid interactions
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not clicked_on_any_button(event.pos):
+                pos = (event.pos[0] // TILE_SIZE, event.pos[1] // TILE_SIZE)
+                b = get_building_at(pos)
+
+                # Placement
+                if track_click_build_factory:
+                    place_building(pos, True); track_click_build_factory = False; clear_popup(); continue
+                if track_click_build_mine:
+                    place_building(pos, False); track_click_build_mine = False; clear_popup(); continue
+
+                # Delete mode
+                if delete_mode:
+                    if b and not selected_building:
+                        remove_building(b); reset_selection(); clear_popup()
+                    elif selected_building and b and selected_building is not b:
+                        if not remove_connection(selected_building, b): show_error("No connection to delete")
+                        reset_selection(); clear_popup()
+                    elif selected_building and pos == PORT_TILE:
+                        remove_port_connection(selected_building); reset_selection(); clear_popup()
+                    else:
+                        if b and not selected_building: selected_building = b
+                    continue
+
+                # Connect mode (building ↔ building)
+                if connect_mode:
+                    if not b:
+                        reset_selection()
+                    else:
+                        if not selected_building:
+                            selected_building = b
+                        else:
+                            if selected_building is not b:
+                                try:
+                                    c = Connection(selected_building, b, 50)
+                                    connections.append(c)
+                                except Exception as e:
+                                    show_error("Failed to connect")
+                                    print(e)
+                            reset_selection()
+                    clear_popup(); continue
+
+                # Producer -> port (first click prioritized)
+                if selected_building and pos == PORT_TILE:
+                    try:
+                        pc = PortConnection(selected_building, port, capacity=50)
+                        port_connections.append(pc)
+                    except Exception:
+                        show_error("Failed to connect to port")
+                    reset_selection(); clear_popup(); continue
+
+                # Normal selection / popup
+                if b and not selected_building:
+                    selected_building = b
+                    show_popup_for(b)
+                elif not b and pos != PORT_TILE:
+                    reset_selection(); clear_popup()
+                else:
+                    if b: show_popup_for(b)
+
+        # Tick: production, pay, transfers
+        now = pygame.time.get_ticks()
+        if now - last_tick >= TICK_MS:
+            last_tick = now
+
+            for m in mines:
+                try:
+                    produced = m.produce()
+                    m.last_output = produced if produced else 0
+                    m.employ(10)
+                    expenses = m.pay(wage)
+                    money -= expenses
+                    m.last_expenses = int(expenses); m.last_revenue = 0
+                except Exception:
+                    print("Mine error")
+
+            for f in factories:
+                try:
+                    produced = f.produce()
+                    f.last_output = produced if produced else 0
+                    f.employ(10)
+                    expenses = f.pay(wage)
+                    money -= expenses
+                    f.last_expenses = int(expenses); f.last_revenue = 0
+                except Exception:
+                    print("Factory error")
+
+            for pc in port_connections:
+                try:
+                    earned = pc.transfer()
+                    if earned and earned > 0:
+                        money += earned
+                        pc.producer.last_revenue = int(earned)
+                except Exception:
+                    show_error("Port transfer error")
+
+            for c in connections:
+                try:
+                    c.transfer()
+                except Exception:
+                    show_error("Transfer error")
+
+        # Auto-clear error after 1 second
+        if error_msg and pygame.time.get_ticks() - error_time > 1000:
+            clear_error()
+
+        # Draw grid
+        for tile in tiles.values():
+            tile.draw(screen)
+
+        # Sea rows
+        for i in range(GRID_COLS):
+            tiles[(i, SEA_ROW)].color = COL["SEA"]
+            tiles[(i, SEA_ROW - 1)].color = COL["SEA"]
+
+        # Visibility logic for build menus
+        if construct_mode:
+            mine_btn.show()
+            factory_btn.show()
+            for b in mine_buttons:
+                b.show() if show_mine_buttons else b.hide()
+            for b in factory_buttons:
+                b.show() if show_factory_buttons else b.hide()
+        else:
+            mine_btn.hide()
+            factory_btn.hide()
+            # Always hide sub-buttons when not in construct mode
+            for b in mine_buttons:
+                b.hide()
+            for b in factory_buttons:
+                b.hide()
+
+
+
+        # Draw buttons
+        for btn in all_buttons:
+            btn.draw(screen)
+
+        # Hover tooltips for build buttons
+        mouse_pos = pygame.mouse.get_pos()
+        if show_mine_buttons:
+            for btn in mine_buttons:
+                if btn.rect.collidepoint(mouse_pos): draw_recipe_tooltip(btn)
+        if show_factory_buttons:
+            for btn in factory_buttons:
+                if btn.rect.collidepoint(mouse_pos): draw_recipe_tooltip(btn)
+
+        # Draw factories, mines, connections, port
+        for f in factories: f.draw(screen)
+        for m in mines: m.draw(screen)
+        for c in connections:
+            try: c.draw(screen)
+            except TypeError: c.draw(screen, TILE_SIZE)
+        for pc in port_connections:
+            try: pc.draw(screen)
+            except TypeError: pc.draw(screen, TILE_SIZE)
+        port.draw(screen)
+
+        # Popup draw (4x4, includes recipe lines)
+        if popup_building and popup_rect:
+            pygame.draw.rect(screen, COL["POPUP_BG"], popup_rect)
+            revenue = int(getattr(popup_building, "last_revenue", 0))
+            expenses = int(getattr(popup_building, "last_expenses", 0))
+            profit = revenue - expenses
+            output = int(getattr(popup_building, "last_output", 0))
+            lines = [
+                f"Type: {getattr(popup_building,'type','')}",
+                f"Lvl: {int(getattr(popup_building,'lvl',1))}",
+                f"Employment: {int(getattr(popup_building,'employees',0))}",
+                f"Productivity: {getattr(popup_building,'productivity',0)}",
+                f"Output: {output} units/sec",
+                f"Revenue: ${revenue}",
+                f"Expenses: ${expenses}",
+                f"Profit: ${profit}"
+            ]
+            # Add recipe info
+            # Add recipe info directly from the building
+            # Show input resources required
+            for r in getattr(popup_building, "req_resources", []):
+                res, amt = r
+                lines.append(f"Needs {amt} {res} per cycle")
+
+
+
+            x = popup_rect.x + 6; y = popup_rect.y + 6
+            for line in lines:
+                screen.blit(popup_font.render(line, True, COL["POPUP_TEXT"]), (x, y))
+                y += 13
+
+            if upgrade_btn_rect:
+                pygame.draw.rect(screen, COL["UPGRADE_BTN"], upgrade_btn_rect)
+                screen.blit(popup_font.render("UP", True, (0, 0, 0)), (upgrade_btn_rect.x + 6, upgrade_btn_rect.y + 6))
+
+        # HUD
+        screen.blit(pygame.font.SysFont(None, 36).render(f"Money: ${int(money)}", True, (255,255,255)), (10, 10))
+        screen.blit(pygame.font.SysFont(None, 24).render(f"Total Employees: {total_employees}", True, (255,255,255)), (10, 50))
+        
+        # Error display
+        if error_msg:
+            screen.blit(error_font.render(error_msg, True, (255, 0, 0)), (WIDTH//2 - 150, 400))
+
+        # Current mode display
+        # Show current mode at top center
+        mode_text = get_current_mode()
+        mode_surface = pygame.font.SysFont(None, 36).render(mode_text, True, (255,255,255))
+        screen.blit(mode_surface, (WIDTH//2 - mode_surface.get_width()//2, 10))
+
+
+        # Lose logic
+        if money < -10000:
+            show_error("You lost! You ran out of money.")
+
+            #force screen update so player sees the message
+            screen.fill((0, 0, 0))
+            screen.blit(error_font.render(error_msg, True, (255,0,0)), (WIDTH//2 - 150, 400))
+            pygame.display.flip()
+
+            pygame.time.delay(2000)
+
+            with open("savegame.json", "w") as f:
+                json.dump({}, f)
+            pygame.time.delay(2000)
+            running = False
+
+        # Win logic
+        if total_employees >= 15000 and len([f for f in factories if f.type == "oil"]) >= 3:
+            show_error("Congrats! You won the game!")
+
+            #force screen update so player sees the message
+            screen.fill((0, 0, 0))
+            screen.blit(error_font.render(error_msg, True, (255,0,0)), (WIDTH//2 - 150, 400))
+            pygame.display.flip()
+
+            pygame.time.delay(2000)
+            with open("savegame.json", "w") as f:
+                json.dump({}, f)
+            pygame.time.delay(2000)
+            running = False
+
+        pygame.display.flip()
+
+    pygame.quit()
+    sys.exit()
+
+if __name__ == "__main__":
+    run_game()
