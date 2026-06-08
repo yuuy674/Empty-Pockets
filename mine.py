@@ -1,5 +1,5 @@
-# FACTORY CLASS
-# TYPES: TEXTILE, FURNITURE, STEEL, FOOD, TOOLS
+# Mine Class
+# TYPES: Iron, Coal, Gold
 
 import pygame
 
