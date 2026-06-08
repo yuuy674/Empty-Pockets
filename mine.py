@@ -10,7 +10,6 @@ class Mine():
         self.max_employment = 100
         self.position = None
         self.employees = 0
-        self.skilled_worker_ratio = .05
         self.upkeep_mod = 0
         self.last_output = 0
         self.inventory = {}
@@ -43,7 +42,6 @@ class Mine():
         def linear_map(value, in_min, in_max, out_min, out_max):
             return out_min + (float(value - in_min) / (in_max - in_min)) * (out_max - out_min)
 
-        self.skilled_worker_ratio = linear_map(self.lvl, 1, 10, 0.05, 0.25)
 
         self.max_employment = 100 + (self.lvl - 1) * 50
     def max_employ(self):
@@ -55,10 +53,9 @@ class Mine():
 
     def pay(self, wage):
         self.wage = wage
-        self.skilled_cost = self.wage * (self.employees * self.skilled_worker_ratio) * 1.3
-        self.unskilled_cost = self.wage * (self.employees * (1 - self.skilled_worker_ratio))
+        self.cost = self.wage self.employees
         self.upkeep = self.lvl * 70 + self.upkeep_mod
-        self.expenses = self.skilled_cost + self.unskilled_cost + self.upkeep
+        self.expenses = self.cost + self.upkeep
         return self.expenses
     
     def set_position(self, tile, tile_size, color):
